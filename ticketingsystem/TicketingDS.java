@@ -65,7 +65,6 @@ public class TicketingDS implements TicketingSystem {
         //每次随机一个座位序号，进行买票
         int length = routePool.size();
         int randomStart = Math.abs(passenger.hashCode() % length);
-        //TODO 记录已卖完票的位置，不再访问
         //对所有位置进行遍历
         for (int i = 0; i < length; i++) {
             Seat seat = routePool.get(randomStart);
@@ -90,19 +89,15 @@ public class TicketingDS implements TicketingSystem {
     public int inquiry(int route, int departure, int arrival) {
         //拿到对应路线
         ArrayList<Seat> routePool = TicketPool.get(route - 1);
-        //每次随机一个座位序号，进行买票
-        int length = routePool.size();
-        int randomStart = rand.nextInt(length);
         //遍历所有的座位
-        for (int i = 0; i < length; i++) {
-            Seat seat = routePool.get(randomStart);
-            randomStart = (randomStart + 1) % length;
+        int count = 0;
+        for (Seat seat : routePool) {
             int result = seat.inquiry(departure, arrival);
             if (result == 1) {
-                return 1;
+                count++;
             }
         }
-        return 0;
+        return count;
     }
 
     /**
@@ -182,19 +177,31 @@ class Seat {
     }
 
     /**
-     * 该座位区间退票（退票可以同步）
+     * 该座位区间退票（由于票已经指定，锁粒度足够细，可以加锁）
      *
      * @return
      */
-    public boolean refundTicket(Ticket ticket) {
-        int departure = ticket.departure;
-        int arrival = ticket.arrival;
-
-        // 将该区间设为空闲，可售票
-        for (int i = departure - 1; i < arrival - 1; i++) {
-            currentSeats[i] = 0;
+    public synchronized boolean refundTicket(Ticket ticket) {
+        boolean isRight = false;
+        for (Ticket item : tickets) {
+            if (item != null && item.tid == ticket.tid) {
+                isRight = true;
+                tickets.remove(item);
+                break;
+            }
         }
-        return true;
+        if (isRight) {
+
+            int departure = ticket.departure;
+            int arrival = ticket.arrival;
+            // 将该区间设为空闲，可售票
+            for (int i = departure - 1; i < arrival - 1; i++) {
+                currentSeats[i] = 0;
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
 

@@ -1,19 +1,21 @@
 package ticketingsystem;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Random;
 
 public class Test {
-    final static int threadnum = 10; // concurrent thread number
-    final static int routenum = 3; // route is designed from 1 to 3
-    final static int coachnum = 3; // coach is arranged from 1 to 5
-    final static int seatnum = 3; // seat is allocated from 1 to 20
-    final static int stationnum = 3; // station is designed from 1 to 5
+    final static int threadnum = 96; // concurrent thread number
+    final static int routenum = 20; // route is designed from 1 to 3
+    final static int coachnum = 15; // coach is arranged from 1 to 5
+    final static int seatnum = 100; // seat is allocated from 1 to 20
+    final static int stationnum = 10; // station is designed from 1 to 5
 
-    final static int testnum = 4000;
-    final static int retpc = 30; // return ticket operation is 10% percent
-    final static int buypc = 60; // buy ticket operation is 30% percent
-    final static int inqpc = 100; //inquiry ticket operation is 60% percent
+    final static int testnum = 100000;
+    final static int retpc = 5; // return ticket operation is 10% percent
+    final static int buypc = 15; // buy ticket operation is 30% percent
+    final static int inqpc = 80; //inquiry ticket operation is 60% percent
 
     static String passengerName() {
         Random rand = new Random();
@@ -23,13 +25,9 @@ public class Test {
 
     public static void main(String[] args) throws InterruptedException {
 
-
-
         Thread[] threads = new Thread[threadnum];
-
         final TicketingDS tds = new TicketingDS(routenum, coachnum, seatnum, stationnum, threadnum);
-
-
+        long time = System.currentTimeMillis();
         for (int i = 0; i < threadnum; i++) {
             threads[i] = new Thread(new Runnable() {
                 public void run() {
@@ -44,15 +42,15 @@ public class Test {
                             int select = rand.nextInt(soldTicket.size());
                             if ((ticket = soldTicket.remove(select)) != null) {
                                 if (tds.refundTicket(ticket)) {
-                                    System.out.println("TicketRefund" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
-                                    System.out.flush();
+//                                    System.out.println("TicketRefund" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
+//                                    System.out.flush();
                                 } else {
-                                    System.out.println("ErrOfRefund");
-                                    System.out.flush();
+//                                    System.out.println("ErrOfRefund");
+//                                    System.out.flush();
                                 }
                             } else {
-                                System.out.println("ErrOfRefund");
-                                System.out.flush();
+//                                System.out.println("ErrOfRefund");
+//                                System.out.flush();
                             }
                         } else if (retpc <= sel && sel < buypc) { // buy ticket
                             String passenger = passengerName();
@@ -61,20 +59,19 @@ public class Test {
                             int arrival = departure + rand.nextInt(stationnum - departure) + 1; // arrival is always greater than departure
                             if ((ticket = tds.buyTicket(passenger, route, departure, arrival)) != null) {
                                 soldTicket.add(ticket);
-                                System.out.println("TicketBought" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
-                                System.out.flush();
+//                                System.out.println("TicketBought" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
+//                                System.out.flush();
                             } else {
-                                System.out.println("TicketSoldOut" + " " + route + " " + departure + " " + arrival);
-                                System.out.flush();
+//                                System.out.println("TicketSoldOut" + " " + route + " " + departure + " " + arrival);
+//                                System.out.flush();
                             }
                         } else if (buypc <= sel && sel < inqpc) { // inquiry ticket
                             int route = rand.nextInt(routenum) + 1;
                             int departure = rand.nextInt(stationnum - 1) + 1;
                             int arrival = departure + rand.nextInt(stationnum - departure) + 1; // arrival is always greater than departure
                             int leftTicket = tds.inquiry(route, departure, arrival);
-                            System.out.println("RemainTicket" + " " + leftTicket + " " + route + " " + departure + " " + arrival);
-                            System.out.flush();
-
+//                            System.out.println("RemainTicket" + " " + leftTicket + " " + route + " " + departure + " " + arrival);
+//                            System.out.flush();
                         }
                     }
 
@@ -86,6 +83,7 @@ public class Test {
         for (int i = 0; i < threadnum; i++) {
             threads[i].join();
         }
+        System.out.println((System.currentTimeMillis() - time)/1000);
     }
 }
 

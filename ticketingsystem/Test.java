@@ -12,7 +12,7 @@ public class Test {
     final static int seatnum = 100; // seat is allocated from 1 to 20
     final static int stationnum = 10; // station is designed from 1 to 5
 
-    final static int testnum = 100000;
+    final static int testnum = 500000;
     final static int retpc = 5; // return ticket operation is 10% percent
     final static int buypc = 15; // buy ticket operation is 30% percent
     final static int inqpc = 80; //inquiry ticket operation is 60% percent
@@ -83,7 +83,7 @@ public class Test {
         for (int i = 0; i < threadnum; i++) {
             threads[i].join();
         }
-        System.out.println((System.currentTimeMillis() - time)/1000);
+        System.out.println((System.currentTimeMillis() - time) / 1000);
     }
 }
 

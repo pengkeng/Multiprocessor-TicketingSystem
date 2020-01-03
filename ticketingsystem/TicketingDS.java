@@ -1,7 +1,7 @@
 package ticketingsystem;
 
-import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 public class TicketingDS implements TicketingSystem {
 
@@ -10,13 +10,13 @@ public class TicketingDS implements TicketingSystem {
     private int coachnum;
     private int seatnum;
     private int stationnum;//最大为10
-    private ArrayList<ArrayList<Seat>> TicketPool = new ArrayList<>();
-    private ArrayList<CopyOnWriteArrayList<Integer>> TicketPoolCount = new ArrayList<>();//该数据结构使用 ReentrantLock, 写加锁，读不加锁
+    public static CopyOnWriteArrayList<CopyOnWriteArrayList<Seat>> TicketPool = new CopyOnWriteArrayList<>();
+    public static CopyOnWriteArrayList<AtomicIntegerArray> TicketPoolCount = new CopyOnWriteArrayList<>();//该数据结构使用 ReentrantLock, 写加锁，读不加锁
 
     /**
      * 每条路线的座位数 coachnum*seatnum
      */
-    private int count;
+    public static int count;
 
     /**
      * 系统初始化
@@ -37,19 +37,19 @@ public class TicketingDS implements TicketingSystem {
 
         //初始化座位
         for (int i = 0; i < this.routenum; i++) {
-            ArrayList<Seat> routePool = new ArrayList<>();
+            CopyOnWriteArrayList<Seat> routePool = new CopyOnWriteArrayList<>();
             for (int j = 0; j < this.coachnum; j++) {
                 for (int k = 0; k < seatnum; k++) {
                     Seat seat = new Seat(i + 1, j + 1, k + 1, this.stationnum);
                     routePool.add(seat);
                 }
             }
-            CopyOnWriteArrayList<Integer> routePoolCount = new CopyOnWriteArrayList<>();
+            TicketPool.add(routePool);
+            AtomicIntegerArray routePoolCount = new AtomicIntegerArray(100);
             for (int j = 0; j < 100; j++) {
-                routePoolCount.add(count);
+                routePoolCount.set(j, count);
             }
             TicketPoolCount.add(routePoolCount);
-            TicketPool.add(routePool);
         }
     }
 
@@ -65,60 +65,21 @@ public class TicketingDS implements TicketingSystem {
     @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
 
-        if (inquiry(route, departure, arrival) == 0) {
+        if (inquiry(route, departure, arrival) <= 0) {
             return null;
         }
-        //拿到对应路线
-        ArrayList<Seat> routePool = TicketPool.get(route - 1);
         //每次随机一个座位序号，进行买票
         //对所有位置进行遍历
-        for (int i = 0; i < count; i++) {
-            Seat seat = routePool.get(i);
-            if (!seat.isFull) {
-                Ticket ticket = seat.buyTicket(passenger, departure, arrival);
-                if (ticket != null) {
-                    updateTicketPool(route, departure, arrival);
-                    return ticket;
-                }
+        int i;
+        for (i = 0; i < count; i++) {
+            Seat seat = TicketPool.get(route - 1).get(i);
+            Ticket ticket = seat.buyTicket(passenger, departure, arrival);
+            if (ticket != null) {
+                TicketingDS.TicketPool.get(route - 1).set(i, seat);
+                return ticket;
             }
         }
         return null;
-    }
-
-    /**
-     * 卖出一张票后更新余票数量
-     *
-     * @param route
-     * @param departure
-     * @param arrival
-     */
-    private void updateTicketPool(int route, int departure, int arrival) {
-        CopyOnWriteArrayList<Integer> routePoolCount = TicketPoolCount.get(route - 1);
-        //i表示发站，j表示到站,对于 90 表示从9站到10站
-        for (int i = 1; i < departure; i++) {
-            for (int j = i + 1; j <= departure; j++) {
-                int index;
-                if (j == 10) {
-                    index = i * 10;
-                } else {
-                    index = i * 10 + j;
-                }
-                int num = routePoolCount.get(index) - 1;
-                routePoolCount.set(index, num);
-            }
-        }
-        for (int k = arrival; k < stationnum; k++) {
-            for (int l = k + 1; l <= stationnum; l++) {
-                int index;
-                if (l == 10) {
-                    index = k * 10;
-                } else {
-                    index = k * 10 + l;
-                }
-                int num = routePoolCount.get(index) - 1;
-                routePoolCount.set(index, num);
-            }
-        }
     }
 
     /**
@@ -131,7 +92,9 @@ public class TicketingDS implements TicketingSystem {
      */
     @Override
     public int inquiry(int route, int departure, int arrival) {
-        arrival = arrival % stationnum;
+        if (arrival == 10) {
+            arrival = 0;
+        }
         return TicketPoolCount.get(route - 1).get(departure * 10 + arrival);
     }
 
@@ -143,12 +106,12 @@ public class TicketingDS implements TicketingSystem {
      */
     @Override
     public boolean refundTicket(Ticket ticket) {
-        int route = ticket.route;
-        int coachId = ticket.coach;
-        int seatId = ticket.seat;
-        int index = (coachId - 1) * seatnum + seatId - 1;
-        Seat seat = TicketPool.get(route - 1).get(index);
         if (ticket.isValid()) {
+            int route = ticket.route;
+            int coachId = ticket.coach;
+            int seatId = ticket.seat;
+            int index = (coachId - 1) * seatnum + seatId - 1;
+            Seat seat = TicketPool.get(route - 1).get(index);
             return seat.refundTicket(ticket);
         } else {
             return false;
@@ -164,9 +127,8 @@ class Seat {
     private int coachnum;
     private int seatnum;
     private int stationnum;
-    private int stateBinary;
+    public int stateBinary;
     private int stateFull;
-    public boolean isFull = false;
 
     Seat(int route, int coach, int seat, int station) {
         this.routenum = route;
@@ -174,8 +136,7 @@ class Seat {
         this.seatnum = seat;
         this.stationnum = station;
         stateBinary = 0;
-
-        stateFull = 1 << this.stationnum - 1;
+        stateFull = (1 << this.stationnum) - 1;
     }
 
     /**
@@ -190,12 +151,34 @@ class Seat {
         int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
         //判断是否还有票
         if ((stateBinary & ticketState) == 0) {
-            Ticket ticket = new Ticket(passenger, routenum, coachnum, seatnum, departure, arrival);
-            // 置位当前区间已无票
-            stateBinary = stateBinary | ticketState;
-            if ((stateBinary ^ stateFull) == 0 || (stateBinary ^ (stateFull >> 1)) == 0) {
-                isFull = true;
+            String tid = routenum * 10000 + coachnum * 1000 + seatnum * 100 + departure * 10 + arrival + passenger;
+            Ticket ticket = new Ticket(passenger, routenum, coachnum, seatnum, departure, arrival, tid.hashCode());
+            int tempState = stateBinary | ticketState;
+            AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(routenum - 1);
+            //i表示发站，j表示到站,对于 90 表示从9站到10站
+            for (int i = 1; i < stationnum; i++) {
+                for (int j = i + 1; j <= stationnum; j++) {
+                    if (!(j <= departure || i >= arrival)) {
+                        int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
+                        //原本有票
+                        if ((stateBinary & state) == 0) {
+                            //买票后票了 需要增加票数
+                            if ((tempState & state) != 0) {
+                                int index;
+                                if (j == 10) {
+                                    index = i * 10;
+                                } else {
+                                    index = i * 10 + j;
+                                }
+                                if (routePoolCount.decrementAndGet(index) < 0) {
+                                    routePoolCount.set(index, 0);
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            stateBinary = tempState;
             return ticket;
         } else {
             return null;
@@ -203,40 +186,100 @@ class Seat {
     }
 
     /**
-     * 该座位区间退票（已验证票的合法性，其他线程不会影响退票的正确性）
+     * 卖出一张票后更新余票数量
+     *
+     * @param route
+     * @param departure
+     * @param arrival
+     */
+    private synchronized void updateTicketPool(int route, int departure, int arrival) {
+        AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(route - 1);
+        int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
+        int tempState = stateBinary | ticketState;
+        //i表示发站，j表示到站,对于 90 表示从9站到10站
+        for (int i = 1; i < stationnum; i++) {
+            for (int j = i + 1; j <= stationnum; j++) {
+                if (!(j <= departure || i >= arrival)) {
+                    int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
+                    //原本有票
+                    if ((stateBinary & state) == 0) {
+                        //买票后票了 需要增加票数
+                        if ((tempState & state) != 0) {
+                            int index;
+                            if (j == 10) {
+                                index = i * 10;
+                            } else {
+                                index = i * 10 + j;
+                            }
+                            if (routePoolCount.decrementAndGet(index) < 0) {
+                                routePoolCount.set(index, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 该座位区间退票（已验证票的合法性，需要加锁）
      *
      * @return
      */
-    public boolean refundTicket(Ticket ticket) {
-        isFull = false;
+    public synchronized boolean refundTicket(Ticket ticket) {
         int departure = ticket.departure;
         int arrival = ticket.arrival;
-        // 将该区间设为空闲，可售票
-        int ticketState = (stateFull >> (departure - 1) << (departure - 1)) | ((1 << (arrival - 1)) - 1);
-        stateBinary = stateBinary & ticketState;
-        return true;
+
+        if (!inquiry(departure, arrival)) {
+            //更新票池状态
+            int ticketState = (stateFull >> (departure - 1) << (departure - 1)) ^ ((1 << (arrival - 1)) - 1);
+            int tempState = stateBinary & ticketState;
+            AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(ticket.route - 1);
+            for (int i = 1; i < stationnum; i++) {
+                for (int j = i + 1; j <= stationnum; j++) {
+                    // 可能受影响的票
+                    if (!(j <= departure || i >= arrival)) {
+                        int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
+                        //原本没票
+                        if ((stateBinary & state) != 0) {
+                            //退票后有票了 需要增加票数
+                            if ((tempState & state) == 0) {
+                                int index;
+                                if (j == 10) {
+                                    index = i * 10;
+                                } else {
+                                    index = i * 10 + j;
+                                }
+                                if (routePoolCount.incrementAndGet(index) > TicketingDS.count) {
+                                    routePoolCount.set(index, TicketingDS.count);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 将该区间设为空闲，可售票
+            stateBinary = tempState;
+            return true;
+        }
+        return false;
     }
 
 
     /**
-     * 查询票，可以多个对象同时操作，允许误差存在
+     * 查询该座位是否还有票
      * 返回0，表示无票;否则返回1
      *
      * @param departure
      * @param arrival
      * @return
      */
-    public int inquiry(int departure, int arrival) {
-
-        //该座位已无余票
-        if (isFull) {
-            return 0;
-        }
+    public synchronized boolean inquiry(int departure, int arrival) {
         int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
         if ((stateBinary & ticketState) == 0) {
-            return 1;
+            return true;
         } else {
-            return 0;
+            return false;
         }
     }
 }

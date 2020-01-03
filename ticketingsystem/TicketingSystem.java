@@ -12,25 +12,26 @@ class Ticket {
     int arrival;
 
     Ticket() {
-
     }
 
-    Ticket(String passenger, int route, int coach, int seat, int departure, int arrival) {
+    Ticket(String passenger, int route, int coach, int seat, int departure, int arrival, long tid) {
         this.passenger = passenger;
         this.route = route;
         this.coach = coach;
         this.seat = seat;
         this.departure = departure;
         this.arrival = arrival;
-        this.tid = route * 10000 + coach * 1000 + seat * 100 + departure * 10 + arrival;
+        this.tid = tid;
     }
 
     /**
      * 判断票据是否合法
+     *
      * @return
      */
     public boolean isValid() {
-        if (route * 10000 + coach * 1000 + seat * 100 + departure * 10 + arrival == tid) {
+        String code = route * 10000 + coach * 1000 + seat * 100 + departure * 10 + arrival +passenger;
+        if (code.hashCode() == tid) {
             return true;
         } else {
             return false;

@@ -1,8 +1,6 @@
 package ticketingsystem;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Random;
 
 public class Test {
@@ -45,7 +43,7 @@ public class Test {
 //                                    System.out.println("TicketRefund" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
 //                                    System.out.flush();
                                 } else {
-//                                    System.out.println("ErrOfRefund");
+//                                    System.out.println("ErrOfRefund1");
 //                                    System.out.flush();
                                 }
                             } else {
@@ -59,7 +57,7 @@ public class Test {
                             int arrival = departure + rand.nextInt(stationnum - departure) + 1; // arrival is always greater than departure
                             if ((ticket = tds.buyTicket(passenger, route, departure, arrival)) != null) {
                                 soldTicket.add(ticket);
-//                                System.out.println("TicketBought" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat);
+//                                System.out.println("TicketBought" + " \tpassenger" + ticket.passenger + " \t " + "route:" + ticket.route + " coach:" + ticket.coach + " departure:" + ticket.departure + "arrival: " + ticket.arrival + " seat:" + ticket.seat + " " + route + " " + departure + " " + arrival);
 //                                System.out.flush();
                             } else {
 //                                System.out.println("TicketSoldOut" + " " + route + " " + departure + " " + arrival);
@@ -84,6 +82,27 @@ public class Test {
             threads[i].join();
         }
         System.out.println((System.currentTimeMillis() - time) / 1000);
+
+
+//        for (int i = 0; i < TicketingDS.TicketPoolCount.size(); i++) {
+//            System.out.println(i);
+//            for (int j = 0; j < TicketingDS.TicketPoolCount.get(i).length(); j++) {
+//                int d = j / 10;
+//                int a = j % 10;
+//                if (d > 0 && a > d) {
+//                    System.out.println(d + " " + a + " " + TicketingDS.TicketPoolCount.get(i).get(j));
+//                }
+//
+//            }
+//
+//        }
+//        for (int i = 0; i < TicketingDS.TicketPool.size(); i++) {
+//            System.out.println(i +" TicketPool");
+//            for (int j = 0; j < TicketingDS.TicketPool.get(i).size(); j++) {
+//                System.out.println(Integer.toBinaryString(TicketingDS.TicketPool.get(i).get(j).stateBinary));
+//            }
+//
+//        }
     }
 }
 

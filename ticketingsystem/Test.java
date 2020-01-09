@@ -29,7 +29,7 @@ public class Test {
         final TicketingDS tds = new TicketingDS(routenum, coachnum, seatnum, stationnum, threadnum);
         long[] spitTime = new long[]{0, 0, 0};
         long time1 = System.currentTimeMillis();
-        int count = 1;
+        int count = 10;
         for (int i = 0; i < count; i++) {
             long[] temps = test(tds);
             System.out.println(System.currentTimeMillis() - time1);

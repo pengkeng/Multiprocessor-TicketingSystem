@@ -1,7 +1,12 @@
 package ticketingsystem;
 
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 public class TicketingDS implements TicketingSystem {
 
@@ -10,8 +15,9 @@ public class TicketingDS implements TicketingSystem {
     private int coachnum;
     private int seatnum;
     private int stationnum;//最大为10
-    public static CopyOnWriteArrayList<CopyOnWriteArrayList<Seat>> TicketPool = new CopyOnWriteArrayList<>();
-    public static CopyOnWriteArrayList<AtomicIntegerArray> TicketPoolCount = new CopyOnWriteArrayList<>();//该数据结构使用 ReentrantLock, 写加锁，读不加锁
+    public static ArrayList<ArrayList<Seat>> TicketPool = new ArrayList<>();
+    public static ArrayList<AtomicIntegerArray> TicketPoolCount = new ArrayList<>();//该数据结构使用 ReentrantLock, 写加锁，读不加锁
+    public Random random;
 
     /**
      * 每条路线的座位数 coachnum*seatnum
@@ -34,10 +40,11 @@ public class TicketingDS implements TicketingSystem {
         this.stationnum = stationnum;
         this.threadnum = threadnum;
         count = coachnum * seatnum;
+        random = new Random();
 
         //初始化座位
         for (int i = 0; i < this.routenum; i++) {
-            CopyOnWriteArrayList<Seat> routePool = new CopyOnWriteArrayList<>();
+            ArrayList<Seat> routePool = new ArrayList<>();
             for (int j = 0; j < this.coachnum; j++) {
                 for (int k = 0; k < seatnum; k++) {
                     Seat seat = new Seat(i + 1, j + 1, k + 1, this.stationnum);
@@ -99,23 +106,24 @@ public class TicketingDS implements TicketingSystem {
     }
 
     /**
-     * 退票，可以多人同时操作一个对象，无需互斥
+     * 退票，可以多人同时操作，无需互斥
      *
      * @param ticket
      * @return
      */
     @Override
     public boolean refundTicket(Ticket ticket) {
-        if (ticket.isValid()) {
+        long code = (long) ticket.arrival + ticket.departure * 100L + (ticket.seat - 1) * 10000L + ticket.coach * 10000000L + ticket.route * 1000000000L;
+        long id = ticket.tid % 100000000000L;
+        if (id == code) {
             int route = ticket.route;
             int coachId = ticket.coach;
             int seatId = ticket.seat;
             int index = (coachId - 1) * seatnum + seatId - 1;
             Seat seat = TicketPool.get(route - 1).get(index);
             return seat.refundTicket(ticket);
-        } else {
-            return false;
         }
+        return false;
     }
 }
 
@@ -127,16 +135,19 @@ class Seat {
     private int coachnum;
     private int seatnum;
     private int stationnum;
-    public int stateBinary;
+    public AtomicInteger stateBinary;
     private int stateFull;
+    private AtomicLongArray tidSet = new AtomicLongArray(100);
+    private AtomicLong tidAdd = new AtomicLong();
 
     Seat(int route, int coach, int seat, int station) {
         this.routenum = route;
         this.coachnum = coach;
         this.seatnum = seat;
         this.stationnum = station;
-        stateBinary = 0;
+        stateBinary = new AtomicInteger(0);
         stateFull = (1 << this.stationnum) - 1;
+        tidAdd.set(0);
     }
 
     /**
@@ -147,23 +158,38 @@ class Seat {
      * @param arrival
      * @return
      */
-    public synchronized Ticket buyTicket(String passenger, int departure, int arrival) {
+    public Ticket buyTicket(String passenger, int departure, int arrival) {
         int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
         //判断是否还有票
-        if ((stateBinary & ticketState) == 0) {
-            String tid = routenum * 10000 + coachnum * 1000 + seatnum * 100 + departure * 10 + arrival + passenger;
-            Ticket ticket = new Ticket(passenger, routenum, coachnum, seatnum, departure, arrival, tid.hashCode());
-            int tempState = stateBinary | ticketState;
-            AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(routenum - 1);
-            //i表示发站，j表示到站,对于 90 表示从9站到10站
-            for (int i = 1; i < stationnum; i++) {
-                for (int j = i + 1; j <= stationnum; j++) {
-                    if (!(j <= departure || i >= arrival)) {
-                        int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
-                        //原本有票
-                        if ((stateBinary & state) == 0) {
-                            //买票后票了 需要增加票数
-                            if ((tempState & state) != 0) {
+        if ((stateBinary.get() & ticketState) == 0) {
+            int last = stateBinary.get();
+            if (stateBinary.compareAndSet(last, stateBinary.get() | ticketState)) {
+                long code = (long) arrival + departure * 100L + (seatnum - 1) * 10000L + coachnum * 10000000L + routenum * 1000000000L;
+                long tid = tidAdd.getAndIncrement() * 100000000000L + code;
+                if (tidSet.compareAndSet(departure * 10 + arrival % 10, 0, tid)) {
+                    Ticket ticket = new Ticket(passenger, routenum, coachnum, seatnum, departure, arrival, tid);
+                    AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(routenum - 1);
+                    //i表示发站，j表示到站,对于 90 表示从9站到10站
+                    int start = departure;
+                    for (int i = departure - 1; i >= 1; i--) {
+                        if (((stateBinary.get() >> (i - 1)) & 1) == 1) {
+                            break;
+                        }
+                        start = i;
+                    }
+                    int end = arrival - 1;
+                    for (int i = arrival; i <= stationnum; i++) {
+                        if (((stateBinary.get() >> (i - 1)) & 1) == 1) {
+                            break;
+                        }
+                        end = i;
+                    }
+                    if (end == 10) {
+                        end = 9;
+                    }
+                    for (int i = start; i < arrival; i++) {
+                        for (int j = departure + 1; j <= end + 1; j++) {
+                            if (j > i) {
                                 int index;
                                 if (j == 10) {
                                     index = i * 10;
@@ -176,74 +202,59 @@ class Seat {
                             }
                         }
                     }
+                    return ticket;
                 }
             }
-            stateBinary = tempState;
-            return ticket;
         } else {
             return null;
         }
+        return null;
     }
 
-    /**
-     * 卖出一张票后更新余票数量
-     *
-     * @param route
-     * @param departure
-     * @param arrival
-     */
-    private synchronized void updateTicketPool(int route, int departure, int arrival) {
-        AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(route - 1);
-        int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
-        int tempState = stateBinary | ticketState;
-        //i表示发站，j表示到站,对于 90 表示从9站到10站
-        for (int i = 1; i < stationnum; i++) {
-            for (int j = i + 1; j <= stationnum; j++) {
-                if (!(j <= departure || i >= arrival)) {
-                    int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
-                    //原本有票
-                    if ((stateBinary & state) == 0) {
-                        //买票后票了 需要增加票数
-                        if ((tempState & state) != 0) {
-                            int index;
-                            if (j == 10) {
-                                index = i * 10;
-                            } else {
-                                index = i * 10 + j;
-                            }
-                            if (routePoolCount.decrementAndGet(index) < 0) {
-                                routePoolCount.set(index, 0);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     /**
      * 该座位区间退票（已验证票的合法性，需要加锁）
      *
      * @return
      */
-    public synchronized boolean refundTicket(Ticket ticket) {
+    public boolean refundTicket(Ticket ticket) {
+        if (tidSet.get(ticket.departure * 10 + ticket.arrival % 10) != ticket.tid) {
+//            System.out.println("333");
+            return false;
+        }
         int departure = ticket.departure;
         int arrival = ticket.arrival;
-
-        if (!inquiry(departure, arrival)) {
+        String str = Integer.toBinaryString(stateBinary.get());
+//        if (!inquiry(departure, arrival)) {
             //更新票池状态
             int ticketState = (stateFull >> (departure - 1) << (departure - 1)) ^ ((1 << (arrival - 1)) - 1);
-            int tempState = stateBinary & ticketState;
-            AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(ticket.route - 1);
-            for (int i = 1; i < stationnum; i++) {
-                for (int j = i + 1; j <= stationnum; j++) {
-                    // 可能受影响的票
-                    if (!(j <= departure || i >= arrival)) {
-                        int state = ((1 << (j - 1)) - 1) ^ ((1 << (i - 1)) - 1);
-                        //原本没票
-                        if ((stateBinary & state) != 0) {
-                            //退票后有票了 需要增加票数
-                            if ((tempState & state) == 0) {
+            long lastTid = tidSet.get(ticket.departure * 10 + ticket.arrival % 10);
+            tidSet.compareAndSet(ticket.departure * 10 + ticket.arrival % 10, lastTid, 0);
+            while (true) {
+                int last = stateBinary.get();
+                if (stateBinary.compareAndSet(last, stateBinary.get() & ticketState)) {
+                    AtomicIntegerArray routePoolCount = TicketingDS.TicketPoolCount.get(ticket.route - 1);
+                    int start = departure;
+                    for (int i = departure - 1; i >= 1; i--) {
+                        if (((stateBinary.get() >> (i - 1)) & 1) == 1) {
+                            break;
+                        }
+                        start = i;
+                    }
+                    int end = arrival - 1;
+                    for (int i = arrival; i <= stationnum; i++) {
+                        if (((stateBinary.get() >> (i - 1)) & 1) == 1) {
+                            break;
+                        }
+                        end = i;
+                    }
+                    if (end == 10) {
+                        end = 9;
+                    }
+
+                    for (int i = start; i < arrival; i++) {
+                        for (int j = departure + 1; j <= end + 1; j++) {
+                            if (j > i) {
                                 int index;
                                 if (j == 10) {
                                     index = i * 10;
@@ -256,13 +267,13 @@ class Seat {
                             }
                         }
                     }
+                    return true;
                 }
             }
-            // 将该区间设为空闲，可售票
-            stateBinary = tempState;
-            return true;
-        }
-        return false;
+//        } else {
+//            System.out.println("111");
+//            return false;
+//        }
     }
 
 
@@ -274,9 +285,9 @@ class Seat {
      * @param arrival
      * @return
      */
-    public synchronized boolean inquiry(int departure, int arrival) {
+    public boolean inquiry(int departure, int arrival) {
         int ticketState = ((1 << (arrival - 1)) - 1) ^ ((1 << (departure - 1)) - 1);
-        if ((stateBinary & ticketState) == 0) {
+        if ((stateBinary.get() & ticketState) == 0) {
             return true;
         } else {
             return false;

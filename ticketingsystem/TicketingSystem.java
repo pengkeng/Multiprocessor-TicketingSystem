@@ -23,20 +23,6 @@ class Ticket {
         this.arrival = arrival;
         this.tid = tid;
     }
-
-    /**
-     * 判断票据是否合法
-     *
-     * @return
-     */
-    public boolean isValid() {
-        String code = route * 10000 + coach * 1000 + seat * 100 + departure * 10 + arrival +passenger;
-        if (code.hashCode() == tid) {
-            return true;
-        } else {
-            return false;
-        }
-    }
 }
 
 
